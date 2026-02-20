@@ -12,6 +12,14 @@ interface VaultState {
     searchQuery: string;
     setSearchQuery: (query: string) => void;
     items: PasswordItem[];
+    isAddModalOpen: boolean;
+    setAddModalOpen: (isOpen: boolean) => void;
+    addItem: (item: Omit<PasswordItem, 'id'>) => void;
+    removeItem: (id: string) => void;
+    itemToDelete: PasswordItem | null;
+    setItemToDelete: (item: PasswordItem | null) => void;
+    selectedItemId: string | null;
+    setSelectedItemId: (id: string | null) => void;
 }
 
 // Mock Data
@@ -27,4 +35,18 @@ export const useVaultStore = create<VaultState>((set) => ({
     searchQuery: '',
     setSearchQuery: (query) => set({ searchQuery: query }),
     items: MOCK_ITEMS,
+    isAddModalOpen: false,
+    setAddModalOpen: (isOpen) => set({ isAddModalOpen: isOpen }),
+    addItem: (item) => set((state) => ({
+        items: [{ ...item, id: Math.random().toString(36).substr(2, 9) }, ...state.items],
+        isAddModalOpen: false
+    })),
+    removeItem: (id) => set((state) => ({
+        items: state.items.filter(item => item.id !== id),
+        itemToDelete: null
+    })),
+    itemToDelete: null,
+    setItemToDelete: (item) => set({ itemToDelete: item }),
+    selectedItemId: null,
+    setSelectedItemId: (id) => set({ selectedItemId: id }),
 }));

@@ -1,25 +1,26 @@
-import { Sidebar } from './components/Sidebar';
-import { Header } from './components/Header';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { DashboardLayout } from './layouts/DashboardLayout';
 import { Dashboard } from './components/Dashboard';
+import { UnlockScreen } from './pages/UnlockScreen';
+import { SecurityDashboard } from './pages/SecurityDashboard';
 
 function App() {
   return (
-    <div className="flex h-screen w-full bg-slate-950 text-slate-50 font-sans overflow-hidden selection:bg-blue-500/30">
-      {/* Fixed Sidebar */}
-      <Sidebar />
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<UnlockScreen />} />
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#0f172a] isolate">
-        <Header />
-
-        {/* Scrollable Dashboard Area */}
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-8">
-          <div className="max-w-[1000px] mx-auto w-full">
-            <Dashboard />
-          </div>
-        </main>
-      </div>
-    </div>
+        <Route path="/vault" element={<DashboardLayout />}>
+          <Route index element={<Navigate to="/vault/dashboard" replace />} />
+          <Route path="dashboard" element={<SecurityDashboard />} />
+          <Route path="items" element={<Dashboard />} />
+          {/* placeholder routes for others */}
+          <Route path="generator" element={<div className="text-white p-8">Password Generator</div>} />
+          <Route path="audit" element={<div className="text-white p-8">Audit Logs</div>} />
+          <Route path="settings" element={<div className="text-white p-8">Settings</div>} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
   );
 }
 

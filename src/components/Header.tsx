@@ -2,7 +2,7 @@ import { Search, Plus } from 'lucide-react';
 import { useVaultStore } from '../store/useStore';
 
 export function Header() {
-    const { searchQuery, setSearchQuery } = useVaultStore();
+    const { searchQuery, setSearchQuery, setAddModalOpen } = useVaultStore();
 
     return (
         <header className="h-[72px] flex items-center justify-between px-8 border-b border-slate-800/60 bg-[#0f172a]/80 backdrop-blur-md sticky top-0 z-10 shrink-0">
@@ -23,7 +23,10 @@ export function Header() {
             </div>
 
             <div className="flex items-center space-x-4 pl-4 ml-auto">
-                <button className="bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium py-2 px-4 rounded-lg flex items-center gap-2 transition-colors shadow-[0_0_15px_rgba(37,99,235,0.2)] hover:shadow-[0_0_20px_rgba(37,99,235,0.4)] ring-1 ring-blue-500/50">
+                <button
+                    onClick={() => setAddModalOpen(true)}
+                    className="bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium py-2 px-4 rounded-lg flex items-center gap-2 transition-colors shadow-[0_0_15px_rgba(37,99,235,0.2)] hover:shadow-[0_0_20px_rgba(37,99,235,0.4)] ring-1 ring-blue-500/50"
+                >
                     <Plus className="h-4 w-4" />
                     Add New
                 </button>

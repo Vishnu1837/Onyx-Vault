@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Copy, ExternalLink, MoreVertical, Check } from 'lucide-react';
+import { Copy, ExternalLink, Trash2, Check } from 'lucide-react';
+import { useVaultStore } from '../store/useStore';
 import type { PasswordItem as PasswordItemType } from '../store/useStore';
 
 interface Props {
@@ -28,6 +29,7 @@ const strengthWidths = {
 };
 
 export function PasswordItem({ item }: Props) {
+    const { setItemToDelete } = useVaultStore();
     const [copied, setCopied] = useState(false);
 
     useEffect(() => {
@@ -71,8 +73,8 @@ export function PasswordItem({ item }: Props) {
                 <button
                     onClick={handleCopy}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${copied
-                            ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30 ring-1 ring-emerald-500/50'
-                            : 'bg-slate-700/50 text-slate-300 border-slate-600/50 hover:bg-slate-700 hover:text-white'
+                        ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30 ring-1 ring-emerald-500/50'
+                        : 'bg-slate-700/50 text-slate-300 border-slate-600/50 hover:bg-slate-700 hover:text-white'
                         }`}
                 >
                     {copied ? (
@@ -92,8 +94,12 @@ export function PasswordItem({ item }: Props) {
                     <ExternalLink className="w-4 h-4" />
                 </button>
 
-                <button className="p-2 text-slate-400 hover:text-slate-200 rounded-lg transition-colors">
-                    <MoreVertical className="w-4 h-4" />
+                <button
+                    onClick={() => setItemToDelete(item)}
+                    className="p-2 text-slate-400 hover:text-red-400 bg-slate-700/30 hover:bg-red-500/10 rounded-lg border border-slate-600/30 hover:border-red-500/30 transition-colors"
+                    title="Remove Item"
+                >
+                    <Trash2 className="w-4 h-4" />
                 </button>
             </div>
         </div>
