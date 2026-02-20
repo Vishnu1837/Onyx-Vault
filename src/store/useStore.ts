@@ -15,6 +15,7 @@ interface VaultState {
     isAddModalOpen: boolean;
     setAddModalOpen: (isOpen: boolean) => void;
     addItem: (item: Omit<PasswordItem, 'id'>) => void;
+    updateItem: (id: string, updates: Partial<PasswordItem>) => void;
     removeItem: (id: string) => void;
     itemToDelete: PasswordItem | null;
     setItemToDelete: (item: PasswordItem | null) => void;
@@ -41,9 +42,13 @@ export const useVaultStore = create<VaultState>((set) => ({
         items: [{ ...item, id: Math.random().toString(36).substr(2, 9) }, ...state.items],
         isAddModalOpen: false
     })),
+    updateItem: (id, updates) => set((state) => ({
+        items: state.items.map(item => item.id === id ? { ...item, ...updates } : item)
+    })),
     removeItem: (id) => set((state) => ({
         items: state.items.filter(item => item.id !== id),
-        itemToDelete: null
+        itemToDelete: null,
+        selectedItemId: state.selectedItemId === id ? null : state.selectedItemId
     })),
     itemToDelete: null,
     setItemToDelete: (item) => set({ itemToDelete: item }),

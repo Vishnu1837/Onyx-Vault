@@ -1,8 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { Dashboard } from './components/Dashboard';
-import { UnlockScreen } from './pages/UnlockScreen';
 import { SecurityDashboard } from './pages/SecurityDashboard';
+import { UnlockScreen } from './pages/UnlockScreen';
+import { PasswordEditor } from './pages/PasswordEditor';
+import { Settings } from './pages/Settings';
 
 function App() {
   return (
@@ -13,11 +15,10 @@ function App() {
         <Route path="/vault" element={<DashboardLayout />}>
           <Route index element={<Navigate to="/vault/dashboard" replace />} />
           <Route path="dashboard" element={<SecurityDashboard />} />
-          <Route path="items" element={<Dashboard />} />
-          {/* placeholder routes for others */}
-          <Route path="generator" element={<div className="text-white p-8">Password Generator</div>} />
-          <Route path="audit" element={<div className="text-white p-8">Audit Logs</div>} />
-          <Route path="settings" element={<div className="text-white p-8">Settings</div>} />
+          <Route path="logins" element={<Dashboard />} />
+          <Route path="settings" element={<Settings />} />
+          <Route path="new" element={<PasswordEditor />} />
+          <Route path="item/:id" element={<PasswordEditor />} />
         </Route>
       </Routes>
     </BrowserRouter>
