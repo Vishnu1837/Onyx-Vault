@@ -1,65 +1,50 @@
-<div align="center">
-  <img src="docs/assets/hero-banner.png" alt="Onyx Vault Hero Image" width="100%" />
+# React + TypeScript + Vite
 
-  # Onyx Vault
-  **A Zero-Knowledge, beautifully designed desktop password manager that syncs securely to your own Google Drive.**
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-  [![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](#)
-  [![Tauri](https://img.shields.io/badge/Tauri-FFC131?style=for-the-badge&logo=tauri&logoColor=black)](#)
-  [![Vite](https://img.shields.io/badge/Vite-B73BFE?style=for-the-badge&logo=vite&logoColor=FFD62E)](#)
-  [![License: MIT](https://img.shields.io/badge/License-MIT-blue.style=for-the-badge)](#)
-</div>
+Currently, two official plugins are available:
 
----
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
 
-## 🔒 The Pitch
-Most password managers ask you to trust their servers with your encrypted data. **Onyx Vault** removes the middleman entirely. It is a native Windows application that encrypts your passwords locally using military-grade cryptography, and then syncs the scrambled ciphertext directly to a hidden, protected folder in *your own* Google Drive. 
+## Expanding the ESLint configuration
 
-**Zero servers. Zero knowledge. 100% your data.**
+If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
 
-## ✨ Key Features
-* **True Zero-Knowledge Architecture:** Your Master Password never leaves your device and is never stored.
-* **BYOS (Bring Your Own Storage):** Seamlessly syncs via the Google Drive REST API using the restricted `appDataFolder` scope to prevent accidental deletion.
-* **Offline First:** Local rolling backups ensure you always have access to your vault, even without an internet connection.
-* **Modern UI/UX:** A clean, distraction-free interface built with React and Tailwind CSS, featuring a built-in password generator and security health dashboard.
-* **Memory Safe Engine:** Powered by a Rust/Tauri backend for blazing-fast cryptographic operations.
+- Configure the top-level `parserOptions` property like this:
 
----
+```js
+export default tseslint.config({
+  languageOptions: {
+    // other options...
+    parserOptions: {
+      project: ['./tsconfig.node.json', './tsconfig.app.json'],
+      tsconfigRootDir: import.meta.dirname,
+    },
+  },
+})
+```
 
-## 🎨 UI/UX Case Study
-*For recruiters and design leads: This project was built with a heavy emphasis on user experience, turning a complex cryptographic workflow into an intuitive, frictionless interface.*
+- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
+- Optionally add `...tseslint.configs.stylisticTypeChecked`
+- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
 
-1. **The Trust Factor:** Security tools often look intimidating. The dark-mode UI was designed using deep navies and soft grays to evoke a calm, professional environment that builds immediate user trust.
-2. **Handling Complex States:** The interface gracefully manages the asynchronous complexities of cloud syncing, providing clear user feedback during Google OAuth handoffs, vault decryption loading states, and offline mode.
-3. **Data Visualization:** The Security Health Dashboard translates raw vault data into easily digestible metrics (weak passwords, reused credentials) with clear calls to action.
+```js
+// eslint.config.js
+import react from 'eslint-plugin-react'
 
-> **[Link to full Figma Mockups / Design Process Here]**
-
----
-
-## 🛡️ Security Architecture
-* **Key Derivation:** Master Passwords are run through **Argon2id** (with a locally stored salt) to generate a 256-bit encryption key.
-* **Encryption:** The local SQLite/JSON vault is encrypted using **AES-256-GCM**, ensuring both confidentiality and data authenticity.
-* **Volatile Memory:** Decrypted plaintext data only exists in the system's RAM and is wiped immediately upon app lock.
-
----
-
-## 🛠️ Tech Stack
-* **Frontend:** React (Vite), Tailwind CSS, Framer Motion (for fluid animations)
-* **Backend / Window Manager:** Tauri (Rust)
-* **Cryptography:** Web Crypto API / Rust `ring`
-* **Cloud Sync:** Google Drive API v3
-
----
-
-## 🚀 Getting Started (Development)
-
-### Prerequisites
-* Node.js (v18+)
-* Rust (`rustup`)
-* A Google Cloud Console account (to generate your Drive API OAuth credentials)
-
-### Installation
-1. Clone the repository:
-   ```bash
-   git clone [https://github.com/yourusername/onyx-vault.git](https://github.com/yourusername/onyx-vault.git)
+export default tseslint.config({
+  // Set the react version
+  settings: { react: { version: '18.3' } },
+  plugins: {
+    // Add the react plugin
+    react,
+  },
+  rules: {
+    // other rules...
+    // Enable its recommended rules
+    ...react.configs.recommended.rules,
+    ...react.configs['jsx-runtime'].rules,
+  },
+})
+```
