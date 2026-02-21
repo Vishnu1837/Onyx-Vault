@@ -25,6 +25,8 @@ interface VaultState {
     setSelectedItemId: (id: string | null) => void;
     isSyncConnected: boolean;
     setSyncConnected: (isConnected: boolean) => void;
+    masterKey: string | null;
+    setMasterKey: (key: string | null) => void;
 }
 
 // Mock Data
@@ -61,4 +63,6 @@ export const useVaultStore = create<VaultState>((set) => ({
     setSelectedItemId: (id) => set({ selectedItemId: id }),
     isSyncConnected: false,
     setSyncConnected: (isConnected) => set({ isSyncConnected: isConnected }),
+    masterKey: null,
+    setMasterKey: (key) => set({ masterKey: key }),
 }));

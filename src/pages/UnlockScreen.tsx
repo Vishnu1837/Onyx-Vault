@@ -1,16 +1,43 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, Lock, Eye, EyeOff } from 'lucide-react';
+import { Box, Lock, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { useVaultStore } from '../store/useStore';
 
 export function UnlockScreen() {
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const [isUnlocking, setIsUnlocking] = useState(false);
     const navigate = useNavigate();
+    const { setMasterKey } = useVaultStore();
 
-    const handleUnlock = (e: React.FormEvent) => {
+    const handleUnlock = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (password) {
-            navigate('/vault');
+        if (password && !isUnlocking) {
+            setIsUnlocking(true);
+            try {
+                const { invoke } = await import('@tauri-apps/api/core');
+
+                // Rust takes the password, burns ~0.5s doing Argon2id, and yields a base64 encryption key + salt
+                // We will hardcode a mock salt just for this iteration to test generating the key.
+                const mockSalt = "E9/MhR2Vv5PIf/pYn4FhWQ";
+                const [b64Key] = await invoke<[string, string]>('derive_encryption_key', {
+                    password: password,
+                    salt: mockSalt
+                });
+
+                // Set the derived key in zustand
+                setMasterKey(b64Key);
+
+                // Absolutely critical: wipe the plaintext master password from React state memory instantly
+                setPassword('');
+
+                // Proceed into the vault
+                navigate('/vault');
+            } catch (err) {
+                console.error("Failed to derive encryption key:", err);
+            } finally {
+                setIsUnlocking(false);
+            }
         }
     };
 
@@ -68,9 +95,10 @@ export function UnlockScreen() {
 
                     <button
                         type="submit"
-                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-3.5 px-4 rounded-xl transition-all shadow-[0_0_20px_rgba(37,99,235,0.2)] hover:shadow-[0_0_25px_rgba(37,99,235,0.3)] ring-1 ring-blue-500/50 mb-6"
+                        disabled={isUnlocking}
+                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-3.5 px-4 rounded-xl transition-all shadow-[0_0_20px_rgba(37,99,235,0.2)] hover:shadow-[0_0_25px_rgba(37,99,235,0.3)] ring-1 ring-blue-500/50 mb-6 flex justify-center items-center disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        Unlock Vault
+                        {isUnlocking ? <Loader2 className="w-5 h-5 animate-spin" /> : "Unlock Vault"}
                     </button>
 
                     <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-800 flex gap-3 items-start">

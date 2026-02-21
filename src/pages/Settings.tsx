@@ -20,6 +20,7 @@ export function Settings() {
 
         const setupDeepLink = async () => {
             try {
+                // Listen to standard deep links
                 unlistenFn = await onOpenUrl(async (urls) => {
                     const callbackUrl = urls.find(u => u.includes('onyxvault://callback'));
                     if (callbackUrl) {
@@ -37,6 +38,46 @@ export function Settings() {
                         }
                     }
                 });
+
+                // Also listen for deep links forwarded from a second instance
+                const { listen } = await import('@tauri-apps/api/event');
+                const unlistenForwarded = await listen<string>('deep-link-received', async (event) => {
+                    const callbackUrl = event.payload;
+                    if (callbackUrl && callbackUrl.includes('onyxvault://callback')) {
+                        try {
+                            const urlParams = new URLSearchParams(callbackUrl.split('?')[1]);
+                            const code = urlParams.get('code');
+                            if (code) {
+                                await invoke('exchange_oauth_code_for_token', { code });
+                                setSyncConnected(true);
+                            }
+                        } catch (e) {
+                            console.error('Failed to securely process forwarded token exchange:', e);
+                        }
+                    }
+                });
+
+                const unlistenOAuth = await listen<string>('oauth-code-received', async (event) => {
+                    const query = event.payload;
+                    try {
+                        const urlParams = new URLSearchParams(query);
+                        const code = urlParams.get('code');
+                        if (code) {
+                            await invoke('exchange_oauth_code_for_token', { code });
+                            setSyncConnected(true);
+                        }
+                    } catch (e) {
+                        console.error('Failed to process oauth code:', e);
+                    }
+                });
+
+                // Overwrite unlistenFn so that both listeners are cleaned up
+                const origUnlistenFn = unlistenFn;
+                unlistenFn = () => {
+                    if (origUnlistenFn) origUnlistenFn();
+                    unlistenForwarded();
+                    unlistenOAuth();
+                };
             } catch (e) {
                 console.error("Deep link listener failed to start:", e);
             }
