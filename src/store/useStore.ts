@@ -4,6 +4,8 @@ export interface PasswordItem {
     id: string;
     title: string;
     username: string;
+    password?: string;
+    lastModified?: string;
     iconUrl: string;
     strength: 'Strong' | 'Medium' | 'Weak' | 'Very Strong';
 }
@@ -25,11 +27,12 @@ interface VaultState {
 
 // Mock Data
 const MOCK_ITEMS: PasswordItem[] = [
-    { id: '1', title: 'Google Account', username: 'alex.doe@gmail.com', iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg', strength: 'Strong' },
-    { id: '2', title: 'Netflix', username: 'movie.watcher@email.com', iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/0/08/Netflix_2015_logo.svg', strength: 'Medium' },
-    { id: '3', title: 'GitHub', username: 'dev_master', iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/9/91/Octicons-mark-github.svg', strength: 'Strong' },
-    { id: '4', title: 'Amazon Web Services', username: 'root_admin', iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/9/93/Amazon_Web_Services_Logo.svg', strength: 'Very Strong' },
-    { id: '5', title: 'Twitter / X', username: 'social_ninja', iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/c/ce/X_logo_2023.svg', strength: 'Weak' },
+    { id: '1', title: 'Google Account', username: 'alex.doe@gmail.com', password: 'SharedPassword123!', lastModified: new Date().toISOString(), iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg', strength: 'Strong' },
+    { id: '2', title: 'Netflix', username: 'movie.watcher@email.com', password: 'weak1', lastModified: new Date(Date.now() - 400 * 24 * 60 * 60 * 1000).toISOString(), iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/0/08/Netflix_2015_logo.svg', strength: 'Medium' },
+    { id: '3', title: 'GitHub', username: 'dev_master', password: 'SharedPassword123!', lastModified: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/9/91/Octicons-mark-github.svg', strength: 'Strong' },
+    { id: '4', title: 'Amazon Web Services', username: 'root_admin', password: 'superSecret_AWS_4455!', lastModified: new Date(Date.now() - 500 * 24 * 60 * 60 * 1000).toISOString(), iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/9/93/Amazon_Web_Services_Logo.svg', strength: 'Very Strong' },
+    { id: '5', title: 'Twitter / X', username: 'social_ninja', password: 'SharedPassword123!', lastModified: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/c/ce/X_logo_2023.svg', strength: 'Weak' },
+    { id: '6', title: 'LinkedIn', username: 'alex.prof', password: 'linkedin_2020', lastModified: new Date(Date.now() - 800 * 24 * 60 * 60 * 1000).toISOString(), iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/c/ca/LinkedIn_logo_initials.png', strength: 'Medium' },
 ];
 
 export const useVaultStore = create<VaultState>((set) => ({

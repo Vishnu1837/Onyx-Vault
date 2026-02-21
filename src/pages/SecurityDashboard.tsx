@@ -1,8 +1,127 @@
 import { Shield, RefreshCw, Unlock, History, AlertTriangle, Key } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useVaultStore } from '../store/useStore';
+import { useMemo } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 
 export function SecurityDashboard() {
     const navigate = useNavigate();
+    const { items } = useVaultStore();
+
+    const handleTestBridge = async () => {
+        try {
+            const response = await invoke('test_security_bridge', { name: 'Frontend' });
+            console.log("Rust says: ", response);
+            alert(response as string);
+        } catch (error) {
+            console.error("IPC Error: ", error);
+        }
+    };
+
+    const {
+        reusedCount,
+        weakCount,
+        oldCount,
+        atRiskAccounts,
+        healthScore
+    } = useMemo(() => {
+        let weak = 0;
+        let old = 0;
+        const passwordCounts: Record<string, number> = {};
+
+        const now = Date.now();
+        const oneYearMs = 365 * 24 * 60 * 60 * 1000;
+
+        // Weak criteria: < 8 chars, or missing lowercase, uppercase, number, or special char.
+        const isWeak = (pw: string) => {
+            if (pw.length < 8) return true;
+            if (!/[A-Z]/.test(pw)) return true;
+            if (!/[a-z]/.test(pw)) return true;
+            if (!/[0-9]/.test(pw)) return true;
+            if (!/[^A-Za-z0-9]/.test(pw)) return true;
+            return false;
+        };
+
+        items.forEach(item => {
+            if (item.password) {
+                passwordCounts[item.password] = (passwordCounts[item.password] || 0) + 1;
+            }
+        });
+
+        const reusedSet = new Set<string>();
+        Object.keys(passwordCounts).forEach(pw => {
+            if (passwordCounts[pw] > 1) {
+                reusedSet.add(pw);
+            }
+        });
+
+        const riskAccounts: any[] = [];
+
+        items.forEach(item => {
+            let hasRisk = false;
+            let riskType = '';
+            let riskLabel = '';
+
+            // Check reused
+            const isReused = item.password && reusedSet.has(item.password);
+
+            // Check weak
+            const itemIsWeak = !item.password || isWeak(item.password) || item.strength === 'Weak';
+            if (itemIsWeak) weak++;
+
+            // Check old
+            let itemIsOld = false;
+            let ageYears = 0;
+            if (item.lastModified) {
+                const ageMs = now - new Date(item.lastModified).getTime();
+                if (ageMs > oneYearMs) {
+                    itemIsOld = true;
+                    ageYears = Math.floor(ageMs / oneYearMs);
+                    old++;
+                }
+            }
+
+            if (itemIsWeak) {
+                hasRisk = true;
+                riskType = 'weak';
+                riskLabel = 'Weak';
+            } else if (isReused) {
+                hasRisk = true;
+                riskType = 'reused';
+                riskLabel = 'Reused';
+            } else if (itemIsOld) {
+                hasRisk = true;
+                riskType = 'old';
+                riskLabel = `Old (${ageYears}y)`;
+            }
+
+            if (hasRisk) {
+                riskAccounts.push({
+                    item,
+                    riskType,
+                    riskLabel
+                });
+            }
+        });
+
+        let reusedTotalAccounts = 0;
+        Object.values(passwordCounts).forEach(count => {
+            if (count > 1) reusedTotalAccounts += count;
+        });
+
+        // Health score calculation
+        const penalty = (weak * 10) + (reusedTotalAccounts * 5) + (old * 2);
+        const score = Math.max(0, 100 - penalty);
+
+        return {
+            reusedCount: reusedTotalAccounts,
+            weakCount: weak,
+            oldCount: old,
+            atRiskAccounts: riskAccounts,
+            healthScore: Math.round(score)
+        };
+
+    }, [items]);
 
     return (
         <div className="flex flex-col h-full w-full custom-scrollbar overflow-y-auto pb-12 pr-4 animate-in fade-in duration-300">
@@ -11,10 +130,13 @@ export function SecurityDashboard() {
                 <div>
                     <h1 className="text-[28px] font-bold text-white tracking-tight">Security Dashboard</h1>
                     <p className="text-[15px] font-medium text-slate-400 mt-1.5 flex items-center gap-1.5">
-                        Your vault is <span className="text-emerald-400 font-bold">85% secure</span>. You are doing well, but 3 accounts need attention.
+                        Your vault is <span className="text-emerald-400 font-bold">{healthScore}% secure</span>. {atRiskAccounts.length > 0 ? `You are doing well, but ${atRiskAccounts.length} accounts need attention.` : 'All your accounts look secure!'}
                     </p>
                 </div>
-                <button className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-bold shadow-sm transition-colors">
+                <button
+                    onClick={handleTestBridge}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-bold shadow-sm transition-colors"
+                >
                     <Shield className="w-4 h-4" /> Scan Vault
                 </button>
             </div>
@@ -30,7 +152,7 @@ export function SecurityDashboard() {
                         Overall Health Score
                     </div>
                     <div className="relative z-10 flex items-baseline gap-2">
-                        <span className="text-4xl font-bold text-white tracking-tight">85</span>
+                        <span className="text-4xl font-bold text-white tracking-tight">{healthScore}</span>
                         <span className="text-slate-500 font-medium">/100</span>
                         <span className="text-emerald-400 text-sm font-bold flex items-center ml-2">
                             <svg className="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
@@ -38,56 +160,56 @@ export function SecurityDashboard() {
                         </span>
                     </div>
                     <div className="w-full bg-slate-800 rounded-full h-2 mt-4 overflow-hidden relative z-10">
-                        <div className="bg-gradient-to-r from-blue-500 to-emerald-400 h-2 rounded-full" style={{ width: '85%' }}></div>
+                        <div className={`h-2 rounded-full ${healthScore < 50 ? 'bg-red-500' : healthScore < 80 ? 'bg-orange-500' : 'bg-gradient-to-r from-blue-500 to-emerald-400'}`} style={{ width: `${healthScore}%` }}></div>
                     </div>
                 </div>
 
                 {/* Reused Passwords */}
                 <div className="bg-[#161b22] border border-[#1e2330] rounded-2xl p-6 shadow-xl flex flex-col justify-between h-[150px]">
                     <div className="flex justify-between items-start">
-                        <div className="w-10 h-10 bg-orange-500/10 rounded-xl flex items-center justify-center border border-orange-500/20">
-                            <RefreshCw className="w-4 h-4 text-orange-500" />
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${reusedCount > 0 ? 'bg-orange-500/10 border-orange-500/20 text-orange-500' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'}`}>
+                            <RefreshCw className="w-4 h-4" />
                         </div>
-                        <span className="bg-orange-500/10 text-orange-500 text-[11px] px-2 py-0.5 rounded-full font-bold">-2 Score</span>
+                        {reusedCount > 0 && <span className="bg-orange-500/10 text-orange-500 text-[11px] px-2 py-0.5 rounded-full font-bold">Needs Action</span>}
                     </div>
                     <div>
                         <div className="text-slate-400 text-xs font-semibold mb-1">Reused Passwords</div>
                         <div className="flex items-baseline gap-2">
-                            <span className="text-3xl font-bold text-white tracking-tight">5</span>
+                            <span className="text-3xl font-bold text-white tracking-tight">{reusedCount}</span>
                         </div>
-                        <p className="text-[11px] text-slate-500 font-medium mt-1 w-full truncate">Across 3 categories</p>
+                        <p className="text-[11px] text-slate-500 font-medium mt-1 w-full truncate">{reusedCount > 0 ? 'Accounts sharing passwords' : 'No reused passwords'}</p>
                     </div>
                 </div>
 
                 {/* Weak Passwords */}
                 <div className="bg-[#161b22] border border-[#1e2330] rounded-2xl p-6 shadow-xl flex flex-col justify-between h-[150px]">
                     <div className="flex justify-between items-start">
-                        <div className="w-10 h-10 bg-red-500/10 rounded-xl flex items-center justify-center border border-red-500/20">
-                            <Unlock className="w-4 h-4 text-red-500" />
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${weakCount > 0 ? 'bg-red-500/10 border-red-500/20 text-red-500' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'}`}>
+                            <Unlock className="w-4 h-4" />
                         </div>
-                        <span className="bg-slate-800 text-slate-400 text-[11px] px-2 py-0.5 rounded-full font-bold">No change</span>
+                        {weakCount > 0 && <span className="bg-red-500/10 text-red-500 text-[11px] px-2 py-0.5 rounded-full font-bold">Critical Risk</span>}
                     </div>
                     <div>
                         <div className="text-slate-400 text-xs font-semibold mb-1">Weak Passwords</div>
                         <div className="flex items-baseline gap-2">
-                            <span className="text-3xl font-bold text-white tracking-tight">2</span>
+                            <span className="text-3xl font-bold text-white tracking-tight">{weakCount}</span>
                         </div>
-                        <p className="text-[11px] text-slate-500 font-medium mt-1 w-full truncate">Critical risk detected</p>
+                        <p className="text-[11px] text-slate-500 font-medium mt-1 w-full truncate">{weakCount > 0 ? 'Update immediately' : 'All passwords are strong'}</p>
                     </div>
                 </div>
 
                 {/* Old Passwords */}
                 <div className="bg-[#161b22] border border-[#1e2330] rounded-2xl p-6 shadow-xl flex flex-col justify-between h-[150px]">
                     <div className="flex justify-between items-start">
-                        <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center border border-blue-500/20">
-                            <History className="w-4 h-4 text-blue-500" />
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${oldCount > 0 ? 'bg-blue-500/10 border-blue-500/20 text-blue-500' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'}`}>
+                            <History className="w-4 h-4" />
                         </div>
-                        <span className="bg-emerald-500/10 text-emerald-400 text-[11px] px-2 py-0.5 rounded-full font-bold">+3 Fixed</span>
+                        {oldCount > 0 && <span className="bg-blue-500/10 text-blue-500 text-[11px] px-2 py-0.5 rounded-full font-bold">Action Suggested</span>}
                     </div>
                     <div>
                         <div className="text-slate-400 text-xs font-semibold mb-1">Old Passwords</div>
                         <div className="flex items-baseline gap-2">
-                            <span className="text-3xl font-bold text-white tracking-tight">12</span>
+                            <span className="text-3xl font-bold text-white tracking-tight">{oldCount}</span>
                         </div>
                         <p className="text-[11px] text-slate-500 font-medium mt-1 w-full truncate">&gt; 1 year old</p>
                     </div>
@@ -99,84 +221,63 @@ export function SecurityDashboard() {
                 <div className="xl:col-span-2 bg-[#161b22] border border-[#1e2330] rounded-2xl flex flex-col shadow-xl overflow-hidden">
                     <div className="p-6 border-b border-[#1e2330] flex justify-between items-center bg-slate-800/20">
                         <h2 className="text-lg font-bold text-white">At Risk Accounts</h2>
-                        <button className="text-[13px] font-semibold text-blue-500 hover:text-blue-400 transition-colors">Fix All (7)</button>
+                        {atRiskAccounts.length > 0 && <button className="text-[13px] font-semibold text-blue-500 hover:text-blue-400 transition-colors">Fix All ({atRiskAccounts.length})</button>}
                     </div>
 
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="border-b border-[#1e2330]">
-                                    <th className="px-6 py-4 text-[10px] uppercase font-bold text-slate-500 tracking-wider w-[30%]">Account</th>
-                                    <th className="px-6 py-4 text-[10px] uppercase font-bold text-slate-500 tracking-wider">Username</th>
-                                    <th className="px-6 py-4 text-[10px] uppercase font-bold text-slate-500 tracking-wider">Risk Type</th>
-                                    <th className="px-6 py-4 text-[10px] uppercase font-bold text-slate-500 tracking-wider text-right">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-[#1e2330]">
-                                {/* Netflix */}
-                                <tr className="hover:bg-slate-800/30 transition-colors group">
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center shadow-sm p-1.5 shrink-0">
-                                                <img src="https://upload.wikimedia.org/wikipedia/commons/0/08/Netflix_2015_logo.svg" alt="Netflix" className="w-full h-full object-contain" />
-                                            </div>
-                                            <span className="font-bold text-slate-200 text-sm">Netflix</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 text-sm font-medium text-slate-400">user@example.com</td>
-                                    <td className="px-6 py-4">
-                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-500/10 text-red-500 text-[11px] font-bold border border-red-500/20">
-                                            <AlertTriangle className="w-3 h-3" /> Weak
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <button className="text-sm font-semibold text-slate-400 hover:text-white transition-colors" onClick={() => navigate('/vault/logins')}>Update</button>
-                                    </td>
-                                </tr>
-
-                                {/* Twitter */}
-                                <tr className="hover:bg-slate-800/30 transition-colors group">
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 bg-[#1DA1F2] rounded-lg flex items-center justify-center shadow-sm p-2 shrink-0">
-                                                <svg className="w-full h-full text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M23.953 4.57c-.885.392-1.83.656-2.825.775 1.017-.609 1.798-1.574 2.165-2.724-.951.564-2.005.974-3.127 1.195-.897-.957-2.178-1.555-3.594-1.555-3.179 0-5.515 2.966-4.797 6.045-4.091-.205-7.719-2.165-10.148-5.144-1.29 2.213-.669 5.108 1.523 6.574-.806-.026-1.566-.247-2.229-.616-.054 2.281 1.581 4.415 3.949 4.89-.693.188-1.452.232-2.224.084.626 1.956 2.444 3.379 4.6 3.419-2.07 1.623-4.678 2.348-7.29 2.04 2.179 1.397 4.768 2.212 7.548 2.212 9.142 0 14.307-7.721 13.995-14.646.962-.695 1.797-1.562 2.457-2.549z" /></svg>
-                                            </div>
-                                            <span className="font-bold text-slate-200 text-sm">Twitter</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 text-sm font-medium text-slate-400">alex_tweets</td>
-                                    <td className="px-6 py-4">
-                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-orange-500/10 text-orange-500 text-[11px] font-bold border border-orange-500/20">
-                                            <RefreshCw className="w-3 h-3" /> Reused
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <button className="text-sm font-semibold text-slate-400 hover:text-white transition-colors" onClick={() => navigate('/vault/logins')}>Update</button>
-                                    </td>
-                                </tr>
-
-                                {/* LinkedIn */}
-                                <tr className="hover:bg-slate-800/30 transition-colors group">
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center shadow-sm p-1 shrink-0">
-                                                <svg className="w-full h-full text-[#0A66C2]" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" /></svg>
-                                            </div>
-                                            <span className="font-bold text-slate-200 text-sm">LinkedIn</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 text-sm font-medium text-slate-400">alex.prof</td>
-                                    <td className="px-6 py-4">
-                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-500/10 text-blue-500 text-[11px] font-bold border border-blue-500/20">
-                                            <History className="w-3 h-3" /> Old (2y)
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <button className="text-sm font-semibold text-slate-400 hover:text-white transition-colors" onClick={() => navigate('/vault/logins')}>Update</button>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                        {atRiskAccounts.length === 0 ? (
+                            <div className="p-12 text-center flex flex-col items-center justify-center">
+                                <Shield className="w-12 h-12 text-emerald-500 mb-4 opacity-50" />
+                                <h3 className="text-lg font-bold text-white mb-1">All Clear!</h3>
+                                <p className="text-sm font-medium text-slate-400">No accounts are currently considered at risk.</p>
+                            </div>
+                        ) : (
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="border-b border-[#1e2330]">
+                                        <th className="px-6 py-4 text-[10px] uppercase font-bold text-slate-500 tracking-wider w-[30%]">Account</th>
+                                        <th className="px-6 py-4 text-[10px] uppercase font-bold text-slate-500 tracking-wider">Username</th>
+                                        <th className="px-6 py-4 text-[10px] uppercase font-bold text-slate-500 tracking-wider">Risk Type</th>
+                                        <th className="px-6 py-4 text-[10px] uppercase font-bold text-slate-500 tracking-wider text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-[#1e2330]">
+                                    {atRiskAccounts.map((account, index) => (
+                                        <tr key={index} className="hover:bg-slate-800/30 transition-colors group">
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center shadow-sm p-1.5 shrink-0 overflow-hidden">
+                                                        <img src={account.item.iconUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(account.item.title)}&background=random`} alt={account.item.title} className="w-full h-full object-contain" />
+                                                    </div>
+                                                    <span className="font-bold text-slate-200 text-sm">{account.item.title}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-sm font-medium text-slate-400">{account.item.username}</td>
+                                            <td className="px-6 py-4">
+                                                {account.riskType === 'weak' && (
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-500/10 text-red-500 text-[11px] font-bold border border-red-500/20">
+                                                        <AlertTriangle className="w-3 h-3" /> {account.riskLabel}
+                                                    </span>
+                                                )}
+                                                {account.riskType === 'reused' && (
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-orange-500/10 text-orange-500 text-[11px] font-bold border border-orange-500/20">
+                                                        <RefreshCw className="w-3 h-3" /> {account.riskLabel}
+                                                    </span>
+                                                )}
+                                                {account.riskType === 'old' && (
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-500/10 text-blue-500 text-[11px] font-bold border border-blue-500/20">
+                                                        <History className="w-3 h-3" /> {account.riskLabel}
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <button className="text-sm font-semibold text-slate-400 hover:text-white transition-colors" onClick={() => navigate(`/vault/item/${account.item.id}`)}>Update</button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
                     </div>
                 </div>
 
