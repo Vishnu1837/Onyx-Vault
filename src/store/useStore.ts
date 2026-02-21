@@ -1,5 +1,11 @@
 import { create } from 'zustand';
 
+export interface Category {
+    id: string;
+    name: string;
+    color: string;
+}
+
 export interface PasswordItem {
     id: string;
     title: string;
@@ -8,6 +14,7 @@ export interface PasswordItem {
     lastModified?: string;
     iconUrl: string;
     strength: 'Strong' | 'Medium' | 'Weak' | 'Very Strong';
+    categoryId?: string;
 }
 
 interface VaultState {
@@ -15,7 +22,8 @@ interface VaultState {
     setSearchQuery: (query: string) => void;
     items: PasswordItem[];
     isAddModalOpen: boolean;
-    setAddModalOpen: (isOpen: boolean) => void;
+    addModalMode: 'website' | 'game';
+    setAddModalOpen: (isOpen: boolean, mode?: 'website' | 'game') => void;
     addItem: (item: Omit<PasswordItem, 'id'>) => void;
     updateItem: (id: string, updates: Partial<PasswordItem>) => void;
     removeItem: (id: string) => void;
@@ -27,36 +35,42 @@ interface VaultState {
     setSyncConnected: (isConnected: boolean) => void;
     masterKey: string | null;
     setMasterKey: (key: string | null) => void;
+    setItems: (items: PasswordItem[]) => void;
+    syncToVault: () => Promise<void>;
+    categories: Category[];
+    addCategory: (cat: Omit<Category, 'id'>) => void;
+    removeCategory: (id: string) => void;
 }
 
-// Mock Data
-const MOCK_ITEMS: PasswordItem[] = [
-    { id: '1', title: 'Google Account', username: 'alex.doe@gmail.com', password: 'SharedPassword123!', lastModified: new Date().toISOString(), iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg', strength: 'Strong' },
-    { id: '2', title: 'Netflix', username: 'movie.watcher@email.com', password: 'weak1', lastModified: new Date(Date.now() - 400 * 24 * 60 * 60 * 1000).toISOString(), iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/0/08/Netflix_2015_logo.svg', strength: 'Medium' },
-    { id: '3', title: 'GitHub', username: 'dev_master', password: 'SharedPassword123!', lastModified: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/9/91/Octicons-mark-github.svg', strength: 'Strong' },
-    { id: '4', title: 'Amazon Web Services', username: 'root_admin', password: 'superSecret_AWS_4455!', lastModified: new Date(Date.now() - 500 * 24 * 60 * 60 * 1000).toISOString(), iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/9/93/Amazon_Web_Services_Logo.svg', strength: 'Very Strong' },
-    { id: '5', title: 'Twitter / X', username: 'social_ninja', password: 'SharedPassword123!', lastModified: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/c/ce/X_logo_2023.svg', strength: 'Weak' },
-    { id: '6', title: 'LinkedIn', username: 'alex.prof', password: 'linkedin_2020', lastModified: new Date(Date.now() - 800 * 24 * 60 * 60 * 1000).toISOString(), iconUrl: 'https://upload.wikimedia.org/wikipedia/commons/c/ca/LinkedIn_logo_initials.png', strength: 'Medium' },
-];
-
-export const useVaultStore = create<VaultState>((set) => ({
+export const useVaultStore = create<VaultState>((set, get) => ({
     searchQuery: '',
     setSearchQuery: (query) => set({ searchQuery: query }),
-    items: MOCK_ITEMS,
+    items: [],
+    setItems: (items) => set({ items }),
     isAddModalOpen: false,
-    setAddModalOpen: (isOpen) => set({ isAddModalOpen: isOpen }),
-    addItem: (item) => set((state) => ({
-        items: [{ ...item, id: Math.random().toString(36).substr(2, 9) }, ...state.items],
-        isAddModalOpen: false
-    })),
-    updateItem: (id, updates) => set((state) => ({
-        items: state.items.map(item => item.id === id ? { ...item, ...updates } : item)
-    })),
-    removeItem: (id) => set((state) => ({
-        items: state.items.filter(item => item.id !== id),
-        itemToDelete: null,
-        selectedItemId: state.selectedItemId === id ? null : state.selectedItemId
-    })),
+    addModalMode: 'website',
+    setAddModalOpen: (isOpen, mode = 'website') => set({ isAddModalOpen: isOpen, addModalMode: mode }),
+    addItem: (item) => {
+        set((state) => ({
+            items: [{ ...item, id: Math.random().toString(36).substr(2, 9) }, ...state.items],
+            isAddModalOpen: false
+        }));
+        get().syncToVault();
+    },
+    updateItem: (id, updates) => {
+        set((state) => ({
+            items: state.items.map(item => item.id === id ? { ...item, ...updates } : item)
+        }));
+        get().syncToVault();
+    },
+    removeItem: (id) => {
+        set((state) => ({
+            items: state.items.filter(item => item.id !== id),
+            itemToDelete: null,
+            selectedItemId: state.selectedItemId === id ? null : state.selectedItemId
+        }));
+        get().syncToVault();
+    },
     itemToDelete: null,
     setItemToDelete: (item) => set({ itemToDelete: item }),
     selectedItemId: null,
@@ -65,4 +79,32 @@ export const useVaultStore = create<VaultState>((set) => ({
     setSyncConnected: (isConnected) => set({ isSyncConnected: isConnected }),
     masterKey: null,
     setMasterKey: (key) => set({ masterKey: key }),
+    categories: [
+        { id: '1', name: 'Important', color: '#a855f7' },
+        { id: '2', name: 'Social Media', color: '#f97316' },
+        { id: '3', name: 'Streaming', color: '#22c55e' },
+        { id: '4', name: 'Work Tools', color: '#eab308' },
+    ],
+    addCategory: (cat) => set((state) => ({
+        categories: [...state.categories, { ...cat, id: Date.now().toString() }]
+    })),
+    removeCategory: (id) => set((state) => ({
+        categories: state.categories.filter(c => c.id !== id)
+    })),
+    syncToVault: async () => {
+        const state = get();
+        if (!state.masterKey) return;
+
+        try {
+            const { invoke } = await import('@tauri-apps/api/core');
+            const plaintext = JSON.stringify(state.items);
+            const salt = await invoke<string | null>('get_vault_salt');
+            if (salt) {
+                await invoke('save_vault_data', { keyB64: state.masterKey, salt, plaintext });
+                console.log("Vault successfully encrypted and locked safely!");
+            }
+        } catch (e) {
+            console.error("Critical failure during encryption:", e);
+        }
+    }
 }));

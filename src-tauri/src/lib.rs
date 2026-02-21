@@ -1,8 +1,10 @@
 use keyring::Entry;
 use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
+    password_hash::{rand_core::{OsRng, RngCore}, PasswordHasher, SaltString},
     Argon2, Algorithm, Version, Params
 };
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use serde::{Deserialize, Serialize};
 
 fn get_keyring_entry() -> Result<Entry, String> {
     Entry::new("OnyxVault", "google_refresh_token").map_err(|e| e.to_string())
@@ -14,7 +16,7 @@ fn derive_encryption_key(mut password: String, salt: Option<String>) -> Result<(
     
     // Determine the salt to use: randomly generated or provided
     let salt_string = match salt {
-        Some(s) => SaltString::new(&s).map_err(|_| "Invalid salt provided".to_string())?,
+        Some(s) => SaltString::from_b64(&s).map_err(|_| "Invalid salt provided".to_string())?,
         None => SaltString::generate(&mut OsRng),
     };
 
@@ -32,19 +34,268 @@ fn derive_encryption_key(mut password: String, salt: Option<String>) -> Result<(
     // The raw 32-byte key is stored in the hash output
     let key_bytes = password_hash.hash.ok_or_else(|| "Failed to extract hash".to_string())?;
     
-    use base64::{Engine as _, engine::general_purpose::STANDARD};
     let b64_key = STANDARD.encode(key_bytes.as_bytes());
 
     Ok((b64_key, salt_string.as_str().to_string()))
 }
 
-use serde::Deserialize;
-
 #[derive(Deserialize)]
 struct TokenResponse {
-    #[allow(dead_code)]
     access_token: String,
     refresh_token: Option<String>,
+}
+
+async fn get_google_access_token() -> Result<String, String> {
+    let entry = get_keyring_entry()?;
+    let refresh_token = entry.get_password().map_err(|_| "Not connected to Google Drive".to_string())?;
+
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let client_id = String::from_utf8(STANDARD.decode("ODc3MDg4MTE4NTgyLW1uaXFlNHRhOTNzM2hlYWtxamI1b2w1Zm1pYW81N2FjLmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29t").unwrap()).unwrap();
+    let client_secret = String::from_utf8(STANDARD.decode("R09DU1BYLVJlR2t5Um9xZG05WTZrTDFyWVVjOVpEbVA3QkM=").unwrap()).unwrap();
+
+    let params = [
+        ("client_id", client_id.as_str()),
+        ("client_secret", client_secret.as_str()),
+        ("refresh_token", refresh_token.as_str()),
+        ("grant_type", "refresh_token"),
+    ];
+
+    let client = reqwest::Client::new();
+    let res = client
+        .post("https://oauth2.googleapis.com/token")
+        .form(&params)
+        .send()
+        .await
+        .map_err(|e| format!("HTTP request failed: {}", e))?;
+
+    if !res.status().is_success() {
+        return Err("Failed to refresh token. Please reconnect Google Drive in Settings.".to_string());
+    }
+
+    let token_resp: TokenResponse = res.json().await.map_err(|e| e.to_string())?;
+    Ok(token_resp.access_token)
+}
+
+#[derive(Serialize, Deserialize)]
+struct VaultFile {
+    salt: String,
+    nonce: String,
+    ciphertext: String,
+}
+
+use tauri::Manager;
+use std::fs;
+use aes_gcm::{
+    aead::{Aead, KeyInit, generic_array::GenericArray},
+    Aes256Gcm,
+};
+
+fn get_vault_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let mut path = app.path().app_data_dir().map_err(|_| "Could not resolve app data dir".to_string())?;
+    fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+    path.push("vault.bin");
+    Ok(path)
+}
+
+#[tauri::command]
+fn get_vault_salt(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let path = get_vault_path(&app)?;
+    if path.exists() {
+        let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
+        let vault: VaultFile = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+        Ok(Some(vault.salt))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+fn save_vault_data(app: tauri::AppHandle, key_b64: String, salt: String, plaintext: String) -> Result<(), String> {
+    let key_bytes = STANDARD.decode(&key_b64).map_err(|e| e.to_string())?;
+    let key = GenericArray::from_slice(&key_bytes);
+    let cipher = Aes256Gcm::new(key);
+    
+    let mut nonce_bytes = [0u8; 12];
+    argon2::password_hash::rand_core::OsRng.fill_bytes(&mut nonce_bytes);
+    let nonce = GenericArray::from_slice(&nonce_bytes);
+    
+    let ciphertext = cipher.encrypt(nonce, plaintext.as_bytes()).map_err(|_| "Encryption failed".to_string())?;
+    
+    let vault_file = VaultFile {
+        salt,
+        nonce: STANDARD.encode(&nonce_bytes),
+        ciphertext: STANDARD.encode(&ciphertext),
+    };
+    
+    let content = serde_json::to_string(&vault_file).map_err(|e| e.to_string())?;
+    fs::write(get_vault_path(&app)?, content).map_err(|e| e.to_string())?;
+    
+    // Auto-sync to Google Drive in the background (fire and forget)
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = sync_to_drive(app.clone()).await {
+            println!("Background Drive sync failed: {}", e);
+        }
+    });
+    
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct DriveFileList {
+    files: Vec<DriveFile>,
+}
+
+#[derive(Deserialize)]
+struct DriveFile {
+    id: String,
+    #[serde(rename = "modifiedTime")]
+    modified_time: Option<String>,
+}
+
+#[tauri::command]
+async fn sync_to_drive(app: tauri::AppHandle) -> Result<(), String> {
+    let access_token = match get_google_access_token().await {
+        Ok(t) => t,
+        Err(_) => return Ok(()), // Silently skip if not connected
+    };
+
+    let vault_path = get_vault_path(&app)?;
+    if !vault_path.exists() {
+        return Ok(());
+    }
+    let vault_bytes = fs::read(&vault_path).map_err(|e| e.to_string())?;
+
+    let client = reqwest::Client::new();
+    
+    // First, check if the file already exists to get its ID for checking/updating
+    let search_res = client.get("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='onyx_vault.bin'")
+        .bearer_auth(&access_token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut file_id = None;
+    if search_res.status().is_success() {
+        if let Ok(list) = search_res.json::<DriveFileList>().await {
+            if let Some(file) = list.files.first() {
+                file_id = Some(file.id.clone());
+            }
+        }
+    }
+
+    // Prepare multipart upload
+    use reqwest::multipart;
+    let metadata_part = multipart::Part::text(r#"{"name": "onyx_vault.bin", "parents": ["appDataFolder"]}"#)
+        .mime_str("application/json")
+        .map_err(|e| e.to_string())?;
+    
+    let file_part = multipart::Part::bytes(vault_bytes)
+        .file_name("onyx_vault.bin")
+        .mime_str("application/octet-stream")
+        .map_err(|e| e.to_string())?;
+
+    let form = multipart::Form::new()
+        .part("metadata", metadata_part)
+        .part("file", file_part);
+
+    let url = if let Some(ref id) = file_id {
+        // Update existing file
+        format!("https://www.googleapis.com/upload/drive/v3/files/{}?uploadType=multipart", id)
+    } else {
+        // Create new file
+        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart".to_string()
+    };
+    
+    let method = if file_id.is_some() { reqwest::Method::PATCH } else { reqwest::Method::POST };
+
+    let res = client.request(method, &url)
+        .bearer_auth(&access_token)
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !res.status().is_success() {
+        return Err(format!("Drive upload failed with status: {}", res.status()));
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn sync_from_drive(app: tauri::AppHandle) -> Result<bool, String> {
+    let access_token = match get_google_access_token().await {
+        Ok(t) => t,
+        Err(_) => return Ok(false), // Silently skip if not connected
+    };
+
+    let client = reqwest::Client::new();
+    
+    // Find the file in appDataFolder
+    let search_res = client.get("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='onyx_vault.bin'&fields=files(id,modifiedTime)")
+        .bearer_auth(&access_token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !search_res.status().is_success() {
+        return Err("Failed to query Drive for vault".into());
+    }
+
+    let list: DriveFileList = search_res.json().await.map_err(|e| e.to_string())?;
+    let cloud_file = match list.files.first() {
+        Some(f) => f,
+        None => return Ok(false), // No cloud vault exists
+    };
+
+    let vault_path = get_vault_path(&app)?;
+    
+    // Compare modification times (naive string comparison works for ISO8601 if both exist)
+    if vault_path.exists() {
+        let local_metadata = fs::metadata(&vault_path).map_err(|e| e.to_string())?;
+        if let (Ok(local_time), Some(cloud_time_str)) = (local_metadata.modified(), &cloud_file.modified_time) {
+            if let Ok(cloud_time) = chrono::DateTime::parse_from_rfc3339(cloud_time_str) {
+                let local_dt: chrono::DateTime<chrono::Utc> = local_time.into();
+                if local_dt >= cloud_time.with_timezone(&chrono::Utc) {
+                    return Ok(false); // Local is newer or same, no need to download
+                }
+            }
+        }
+    }
+
+    // Cloud is newer, or local doesn't exist. Download it!
+    let download_url = format!("https://www.googleapis.com/drive/v3/files/{}?alt=media", cloud_file.id);
+    let bytes = client.get(&download_url)
+        .bearer_auth(&access_token)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .bytes()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    fs::write(&vault_path, bytes).map_err(|e| e.to_string())?;
+    
+    Ok(true) // Indicates a download occurred
+}
+
+#[tauri::command]
+fn load_vault_data(app: tauri::AppHandle, key_b64: String) -> Result<String, String> {
+    let path = get_vault_path(&app)?;
+    let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let vault: VaultFile = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    
+    let key_bytes = STANDARD.decode(&key_b64).map_err(|e| e.to_string())?;
+    let key = GenericArray::from_slice(&key_bytes);
+    let cipher = Aes256Gcm::new(key);
+    
+    let nonce_bytes = STANDARD.decode(&vault.nonce).map_err(|e| e.to_string())?;
+    let nonce = GenericArray::from_slice(&nonce_bytes);
+    let ciphertext = STANDARD.decode(&vault.ciphertext).map_err(|e| e.to_string())?;
+    
+    let plaintext_bytes = cipher.decrypt(nonce, ciphertext.as_ref()).map_err(|_| "Failed to decrypt. Incorrect Master Password!".to_string())?;
+    
+    String::from_utf8(plaintext_bytes).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -162,7 +413,7 @@ fn test_security_bridge(name: &str) -> String {
     format!("Hello {}, the secure bridge to Rust is active!", name)
 }
 
-use tauri::{Manager, Emitter};
+use tauri::Emitter;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -183,7 +434,12 @@ pub fn run() {
             initiate_google_login,
             check_sync_status,
             exchange_oauth_code_for_token,
-            derive_encryption_key
+            derive_encryption_key,
+            get_vault_salt,
+            save_vault_data,
+            load_vault_data,
+            sync_to_drive,
+            sync_from_drive
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

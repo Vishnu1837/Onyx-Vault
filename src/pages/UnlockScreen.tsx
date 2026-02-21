@@ -8,7 +8,7 @@ export function UnlockScreen() {
     const [showPassword, setShowPassword] = useState(false);
     const [isUnlocking, setIsUnlocking] = useState(false);
     const navigate = useNavigate();
-    const { setMasterKey } = useVaultStore();
+    const { setMasterKey, setItems } = useVaultStore();
 
     const handleUnlock = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -17,15 +17,38 @@ export function UnlockScreen() {
             try {
                 const { invoke } = await import('@tauri-apps/api/core');
 
-                // Rust takes the password, burns ~0.5s doing Argon2id, and yields a base64 encryption key + salt
-                // We will hardcode a mock salt just for this iteration to test generating the key.
-                const mockSalt = "E9/MhR2Vv5PIf/pYn4FhWQ";
-                const [b64Key] = await invoke<[string, string]>('derive_encryption_key', {
+                // 1. Check if a vault already exists by grabbing its salt
+                const existingSalt = await invoke<string | null>('get_vault_salt');
+
+                // 2. Burn ~0.5s doing Argon2id to yield a base64 encryption key + salt
+                const [b64Key, newOrExistingSalt] = await invoke<[string, string]>('derive_encryption_key', {
                     password: password,
-                    salt: mockSalt
+                    salt: existingSalt
                 });
 
-                // Set the derived key in zustand
+                if (existingSalt) {
+                    try {
+                        // 3a. If vault exists, attempt decryption. AES-256-GCM will forcefully reject a bad password.
+                        const decryptedStr = await invoke<string>('load_vault_data', { keyB64: b64Key });
+                        const parsedItems = JSON.parse(decryptedStr);
+                        setItems(parsedItems);
+                        console.log("Vault loaded and decrypted successfully!");
+                    } catch (e) {
+                        alert("Incorrect Master Password!");
+                        throw new Error("Invalid password");
+                    }
+                } else {
+                    // 3b. First time setup! Save an empty vault to lock in this password permanently
+                    const emptyVaultData = JSON.stringify([]);
+                    await invoke('save_vault_data', {
+                        keyB64: b64Key,
+                        salt: newOrExistingSalt,
+                        plaintext: emptyVaultData
+                    });
+                    console.log("New encrypted vault created successfully!");
+                }
+
+                // Set the derived key in zustand memory
                 setMasterKey(b64Key);
 
                 // Absolutely critical: wipe the plaintext master password from React state memory instantly
@@ -34,7 +57,7 @@ export function UnlockScreen() {
                 // Proceed into the vault
                 navigate('/vault');
             } catch (err) {
-                console.error("Failed to derive encryption key:", err);
+                console.error("Failed to unlock:", err);
             } finally {
                 setIsUnlocking(false);
             }

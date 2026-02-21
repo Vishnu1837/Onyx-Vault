@@ -12,23 +12,27 @@ import {
     EyeOff,
     Eye,
     RefreshCw,
-    Shield
+    Shield,
+    Gamepad2,
+    Tag
 } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useVaultStore } from '../store/useStore';
 
 export function PasswordEditor() {
     const { id } = useParams();
     const navigate = useNavigate();
+    const location = useLocation();
     const isNew = !id;
-    const { items, addItem, updateItem, setItemToDelete } = useVaultStore();
+    const isGame = (location.state as any)?.mode === 'game';
+    const { items, addItem, updateItem, setItemToDelete, categories } = useVaultStore();
 
     // Form state
     const [title, setTitle] = useState('');
     const [website, setWebsite] = useState('');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
-    const [notes, setNotes] = useState('');
+    const [categoryId, setCategoryId] = useState('');
 
     // UI state
     const [showPassword, setShowPassword] = useState(false);
@@ -97,14 +101,16 @@ export function PasswordEditor() {
                 username: username,
                 password: password,
                 iconUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(title || 'New')}&background=random`,
-                strength: (strengthInfo.label === 'None' ? 'Weak' : strengthInfo.label) as any
+                strength: (strengthInfo.label === 'None' ? 'Weak' : strengthInfo.label) as any,
+                ...(categoryId ? { categoryId } : {})
             });
         } else if (id) {
             updateItem(id, {
                 title: title || 'Unnamed Item',
                 username: username,
                 password: password,
-                strength: (strengthInfo.label === 'None' ? 'Weak' : strengthInfo.label) as any
+                strength: (strengthInfo.label === 'None' ? 'Weak' : strengthInfo.label) as any,
+                ...(categoryId ? { categoryId } : {})
             });
         }
         navigate('/vault/logins');
@@ -125,10 +131,12 @@ export function PasswordEditor() {
 
                     <div className="flex items-center gap-4">
                         <div className="w-10 h-10 bg-[#161b22] border border-[#1e2330] rounded-xl flex items-center justify-center shadow-sm">
-                            <Globe className="w-5 h-5 text-blue-400" />
+                            {isGame
+                                ? <Gamepad2 className="w-5 h-5 text-violet-400" />
+                                : <Globe className="w-5 h-5 text-blue-400" />}
                         </div>
                         <div>
-                            <h1 className="text-2xl font-bold text-white tracking-tight">{title || 'New Item'}</h1>
+                            <h1 className="text-2xl font-bold text-white tracking-tight">{title || (isGame ? 'New Game / App' : 'New Website Login')}</h1>
                             <p className="text-xs text-slate-500 mt-1 font-medium">Last modified: Today at 10:42 AM</p>
                         </div>
                     </div>
@@ -179,25 +187,27 @@ export function PasswordEditor() {
                                 />
                             </div>
 
-                            {/* Website Segment */}
-                            <div>
-                                <label className="block text-[13px] font-semibold text-slate-400 mb-2">Website Address</label>
-                                <div className="relative flex items-center">
-                                    <div className="absolute left-4 text-slate-500">
-                                        <Globe className="w-4 h-4" />
-                                    </div>
-                                    <input
-                                        type="text"
-                                        value={website}
-                                        onChange={(e) => setWebsite(e.target.value)}
-                                        placeholder="https://"
-                                        className="w-full bg-[#111622] rounded-xl py-3 pl-11 pr-12 text-sm font-medium text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500/50 border border-transparent focus:border-blue-500/30 transition-all"
-                                    />
-                                    <div className="absolute right-4 text-slate-500 hover:text-slate-300 cursor-pointer">
-                                        <ExternalLink className="w-4 h-4" />
+                            {/* Website field — hidden in game mode */}
+                            {!isGame && (
+                                <div>
+                                    <label className="block text-[13px] font-semibold text-slate-400 mb-2">Website Address</label>
+                                    <div className="relative flex items-center">
+                                        <div className="absolute left-4 text-slate-500">
+                                            <Globe className="w-4 h-4" />
+                                        </div>
+                                        <input
+                                            type="text"
+                                            value={website}
+                                            onChange={(e) => setWebsite(e.target.value)}
+                                            placeholder="https://"
+                                            className="w-full bg-[#111622] rounded-xl py-3 pl-11 pr-12 text-sm font-medium text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500/50 border border-transparent focus:border-blue-500/30 transition-all"
+                                        />
+                                        <div className="absolute right-4 text-slate-500 hover:text-slate-300 cursor-pointer">
+                                            <ExternalLink className="w-4 h-4" />
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            )}
 
                             {/* User & Pass Row */}
                             <div className="grid grid-cols-2 gap-5">
@@ -262,17 +272,47 @@ export function PasswordEditor() {
                         </div>
                     </div>
 
-                    {/* Secure Notes Card */}
+                    {/* Category Card */}
                     <div className="bg-[#161b22] border border-[#1e2330] rounded-[24px] p-7 shadow-xl">
-                        <div className="flex items-center gap-2.5 mb-6 text-white font-bold text-lg">
-                            <FileText className="w-5 h-5 text-slate-300" /> Secure Notes
+                        <div className="flex items-center gap-2.5 mb-2 text-white font-bold text-lg">
+                            <Tag className="w-5 h-5 text-blue-400" /> Category
                         </div>
-                        <textarea
-                            value={notes}
-                            onChange={(e) => setNotes(e.target.value)}
-                            placeholder="Add any secure notes, recovery codes, or answers to security questions here..."
-                            className="w-full h-32 bg-[#111622] rounded-xl p-4 text-sm font-medium text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500/50 border border-transparent focus:border-blue-500/30 transition-all resize-none custom-scrollbar"
-                        ></textarea>
+                        <p className="text-xs text-slate-500 mb-5 font-medium">Assign this password to a category to keep your vault organised.</p>
+
+                        <div className="flex flex-wrap gap-2.5">
+                            {/* None pill */}
+                            <button
+                                type="button"
+                                onClick={() => setCategoryId('')}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${categoryId === ''
+                                    ? 'bg-slate-700 border-slate-500 text-white'
+                                    : 'bg-[#111622] border-[#1e2330] text-slate-500 hover:text-slate-300'
+                                    }`}
+                            >
+                                None
+                            </button>
+
+                            {categories.map(cat => (
+                                <button
+                                    key={cat.id}
+                                    type="button"
+                                    onClick={() => setCategoryId(cat.id)}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${categoryId === cat.id
+                                        ? 'border-transparent'
+                                        : 'bg-[#111622] border-[#1e2330] text-slate-500 hover:text-slate-300'
+                                        }`}
+                                    style={categoryId === cat.id
+                                        ? { backgroundColor: cat.color + '22', borderColor: cat.color + '66', color: cat.color }
+                                        : {}}
+                                >
+                                    <span
+                                        className="w-2 h-2 rounded-full shrink-0"
+                                        style={{ backgroundColor: cat.color }}
+                                    />
+                                    {cat.name}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
 

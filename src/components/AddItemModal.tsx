@@ -1,15 +1,29 @@
-import { useState } from 'react';
-import { X, Globe, User, KeyRound, AlignLeft, ShieldAlert } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { X, Globe, User, KeyRound, AlignLeft, ShieldAlert, Gamepad2 } from 'lucide-react';
 import { useVaultStore } from '../store/useStore';
 
 export function AddItemModal() {
-    const { isAddModalOpen, setAddModalOpen, addItem } = useVaultStore();
+    const { isAddModalOpen, setAddModalOpen, addItem, categories, addModalMode } = useVaultStore();
+
+    const isGame = addModalMode === 'game';
 
     const [title, setTitle] = useState('');
     const [website, setWebsite] = useState('');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [notes, setNotes] = useState('');
+    const [categoryId, setCategoryId] = useState('');
+
+    // Live favicon preview using Google's public Favicon service
+    const faviconPreview = useMemo(() => {
+        if (!website) return null;
+        try {
+            const url = new URL(website.startsWith('http') ? website : `https://${website}`);
+            return `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=128`;
+        } catch {
+            return null;
+        }
+    }, [website]);
 
     if (!isAddModalOpen) return null;
 
@@ -24,7 +38,7 @@ export function AddItemModal() {
         else if (password.length > 5) strength = 'Medium';
 
         let iconUrl = 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/Square_Lock_Icon.svg/1024px-Square_Lock_Icon.svg.png';
-        if (website) {
+        if (!isGame && website) {
             try {
                 const url = new URL(website.startsWith('http') ? website : `https://${website}`);
                 iconUrl = `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=128`;
@@ -37,11 +51,12 @@ export function AddItemModal() {
             title,
             username,
             strength,
-            iconUrl
+            iconUrl,
+            ...(categoryId ? { categoryId } : {})
         });
 
         // Reset fields
-        setTitle(''); setWebsite(''); setUsername(''); setPassword(''); setNotes('');
+        setTitle(''); setWebsite(''); setUsername(''); setPassword(''); setNotes(''); setCategoryId('');
     };
 
     return (
@@ -51,7 +66,13 @@ export function AddItemModal() {
                 {/* Modal Header */}
                 <div className="px-6 py-4 flex items-center justify-between border-b border-slate-800/60 bg-slate-900/40 shrink-0">
                     <div className="flex items-center gap-3 text-slate-200">
-                        <h2 className="text-xl font-bold tracking-tight">Add New Item</h2>
+                        {isGame
+                            ? <Gamepad2 className="w-5 h-5 text-violet-400" />
+                            : <Globe className="w-5 h-5 text-blue-400" />
+                        }
+                        <h2 className="text-xl font-bold tracking-tight">
+                            {isGame ? 'Add Game / App' : 'Add Website Login'}
+                        </h2>
                     </div>
                     <button
                         onClick={() => setAddModalOpen(false)}
@@ -79,25 +100,75 @@ export function AddItemModal() {
                                         required
                                         type="text"
                                         value={title} onChange={(e) => setTitle(e.target.value)}
-                                        placeholder="e.g. Twitter Login"
+                                        placeholder={isGame ? 'e.g. Minecraft, Steam, Epic Games' : 'e.g. Twitter Login'}
                                         className="w-full bg-slate-900/60 border border-slate-700/50 rounded-lg py-2.5 px-4 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
                                     />
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-400 mb-1.5 pl-1">Website Address</label>
-                                    <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                                            <Globe className="w-4 h-4 text-slate-500" />
-                                        </div>
-                                        <input
-                                            type="url"
-                                            value={website} onChange={(e) => setWebsite(e.target.value)}
-                                            placeholder="https://example.com"
-                                            className="w-full bg-slate-900/60 border border-slate-700/50 rounded-lg py-2.5 pl-10 pr-4 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
-                                        />
+                                    <label className="block text-sm font-medium text-slate-400 mb-1.5 pl-1">Category</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setCategoryId('')}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${categoryId === '' ? 'bg-slate-700 border-slate-500 text-white' : 'bg-slate-900/60 border-slate-700/50 text-slate-500 hover:text-slate-300'}`}
+                                        >
+                                            None
+                                        </button>
+                                        {categories.map(cat => (
+                                            <button
+                                                key={cat.id}
+                                                type="button"
+                                                onClick={() => setCategoryId(cat.id)}
+                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${categoryId === cat.id ? 'text-white border-transparent' : 'bg-slate-900/60 border-slate-700/50 text-slate-500 hover:text-slate-300'}`}
+                                                style={categoryId === cat.id ? { backgroundColor: cat.color + '33', borderColor: cat.color + '88', color: cat.color } : {}}
+                                            >
+                                                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cat.color }} />
+                                                {cat.name}
+                                            </button>
+                                        ))}
                                     </div>
                                 </div>
+
+                                {/* Website field: hidden in game mode */}
+                                {!isGame && (
+                                    <div>
+                                        <div className="flex items-center justify-between mb-1.5 pl-1">
+                                            <label className="block text-sm font-medium text-slate-400">Website Address</label>
+                                            {faviconPreview && (
+                                                <div className="flex items-center gap-1.5 text-[11px] text-emerald-500 font-semibold">
+                                                    <img
+                                                        src={faviconPreview}
+                                                        alt="favicon"
+                                                        className="w-4 h-4 rounded object-contain"
+                                                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                                    />
+                                                    Icon detected
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="relative">
+                                            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                                                {faviconPreview ? (
+                                                    <img
+                                                        src={faviconPreview}
+                                                        alt=""
+                                                        className="w-4 h-4 rounded object-contain"
+                                                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                                    />
+                                                ) : (
+                                                    <Globe className="w-4 h-4 text-slate-500" />
+                                                )}
+                                            </div>
+                                            <input
+                                                type="url"
+                                                value={website} onChange={(e) => setWebsite(e.target.value)}
+                                                placeholder="https://example.com"
+                                                className="w-full bg-slate-900/60 border border-slate-700/50 rounded-lg py-2.5 pl-10 pr-4 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>

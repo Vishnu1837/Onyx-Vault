@@ -10,12 +10,7 @@ export function Settings() {
     const { isSyncConnected, setSyncConnected } = useVaultStore();
 
     useEffect(() => {
-        // Check initial secure credential status on load
-        invoke<boolean>('check_sync_status')
-            .then(setSyncConnected)
-            .catch(console.error);
-
-        // Listen for the OS-level deep link redirect from the browser
+        // Deep link listeners for OAuth callback
         let unlistenFn: (() => void) | null = null;
 
         const setupDeepLink = async () => {
