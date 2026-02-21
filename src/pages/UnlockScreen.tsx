@@ -20,7 +20,7 @@ export function UnlockScreen() {
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-600/5 blur-[120px] rounded-full pointer-events-none" />
 
             {/* Top Left Brand */}
-            <div className="absolute top-8 left-8 flex items-center gap-3">
+            <div className="absolute top-12 left-8 flex items-center gap-3">
                 <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(37,99,235,0.3)]">
                     <Box className="w-5 h-5 text-white" />
                 </div>
@@ -28,7 +28,7 @@ export function UnlockScreen() {
             </div>
 
             {/* Top Right Help */}
-            <button className="absolute top-8 right-8 text-sm font-medium text-slate-400 hover:text-white transition-colors flex items-center gap-2">
+            <button className="absolute top-12 right-8 text-sm font-medium text-slate-400 hover:text-white transition-colors flex items-center gap-2">
                 <div className="w-5 h-5 rounded-full border border-current flex items-center justify-center text-[10px]">?</div>
                 Help Center
             </button>

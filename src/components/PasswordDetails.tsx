@@ -8,11 +8,12 @@ import {
     Eye,
     EyeOff,
     Copy,
-    ExternalLink
+    ExternalLink,
+    ChevronLeft
 } from 'lucide-react';
 
 export function PasswordDetails() {
-    const { items, selectedItemId, setItemToDelete } = useVaultStore();
+    const { items, selectedItemId, setItemToDelete, setSelectedItemId } = useVaultStore();
     const navigate = useNavigate();
     const [showPassword, setShowPassword] = useState(false);
     const [showDropdown, setShowDropdown] = useState(false);
@@ -56,6 +57,12 @@ export function PasswordDetails() {
             {/* Header */}
             <div className="flex justify-between items-start mb-8">
                 <div className="flex items-center gap-4">
+                    <button
+                        onClick={() => setSelectedItemId(null)}
+                        className="lg:hidden p-2 -ml-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors"
+                    >
+                        <ChevronLeft className="w-5 h-5" />
+                    </button>
                     <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center p-2.5 shadow-sm">
                         <img src={item.iconUrl} alt={item.title} className="w-full h-full object-contain" />
                     </div>

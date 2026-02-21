@@ -11,7 +11,7 @@ export function PasswordList() {
     );
 
     return (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 h-full overflow-y-auto custom-scrollbar pb-20 pr-2">
             {filteredItems.length > 0 ? (
                 filteredItems.map((item) => (
                     <PasswordItem key={item.id} item={item} />

@@ -23,6 +23,8 @@ interface VaultState {
     setItemToDelete: (item: PasswordItem | null) => void;
     selectedItemId: string | null;
     setSelectedItemId: (id: string | null) => void;
+    isSyncConnected: boolean;
+    setSyncConnected: (isConnected: boolean) => void;
 }
 
 // Mock Data
@@ -57,4 +59,6 @@ export const useVaultStore = create<VaultState>((set) => ({
     setItemToDelete: (item) => set({ itemToDelete: item }),
     selectedItemId: null,
     setSelectedItemId: (id) => set({ selectedItemId: id }),
+    isSyncConnected: false,
+    setSyncConnected: (isConnected) => set({ isSyncConnected: isConnected }),
 }));

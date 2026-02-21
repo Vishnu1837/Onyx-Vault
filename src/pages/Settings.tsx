@@ -1,9 +1,66 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Shield, Clipboard, RefreshCw, History, Cloud } from 'lucide-react';
+import { useVaultStore } from '../store/useStore';
+import { invoke } from '@tauri-apps/api/core';
+import { onOpenUrl } from '@tauri-apps/plugin-deep-link';
 
 export function Settings() {
     const [autoLock, setAutoLock] = useState('5 Minutes');
     const [clipboardTimeout, setClipboardTimeout] = useState(30);
+    const { isSyncConnected, setSyncConnected } = useVaultStore();
+
+    useEffect(() => {
+        // Check initial secure credential status on load
+        invoke<boolean>('check_sync_status')
+            .then(setSyncConnected)
+            .catch(console.error);
+
+        // Listen for the OS-level deep link redirect from the browser
+        let unlistenFn: (() => void) | null = null;
+
+        const setupDeepLink = async () => {
+            try {
+                unlistenFn = await onOpenUrl(async (urls) => {
+                    const callbackUrl = urls.find(u => u.includes('onyxvault://callback'));
+                    if (callbackUrl) {
+                        try {
+                            // Extract code from something like onyxvault://callback?code=4/0Aea...
+                            const urlParams = new URLSearchParams(callbackUrl.split('?')[1]);
+                            const code = urlParams.get('code');
+                            if (code) {
+                                // Hand the code directly to Rust over IPC to exchange and secure. Frontend never holds the long-term token.
+                                await invoke('exchange_oauth_code_for_token', { code });
+                                setSyncConnected(true);
+                            }
+                        } catch (e) {
+                            console.error('Failed to securely process token exchange:', e);
+                        }
+                    }
+                });
+            } catch (e) {
+                console.error("Deep link listener failed to start:", e);
+            }
+        };
+
+        setupDeepLink();
+
+        return () => {
+            if (unlistenFn) unlistenFn();
+        };
+    }, [setSyncConnected]);
+
+    const handleConnectClick = async () => {
+        try {
+            if (!isSyncConnected) {
+                await invoke('initiate_google_login');
+            } else {
+                // Simulate manual sync trigger
+                console.log("Triggering manual sync...");
+            }
+        } catch (e) {
+            console.error('Failed to initiate login flow:', e);
+        }
+    };
 
     return (
         <div className="flex flex-col h-full w-full custom-scrollbar overflow-y-auto pb-12 pr-4 animate-in fade-in duration-300">
@@ -115,19 +172,38 @@ export function Settings() {
                                 <div>
                                     <div className="flex items-center gap-3">
                                         <h3 className="text-sm font-bold text-white">Google Drive Backup</h3>
-                                        <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-[11px] font-bold">
-                                            <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div>
-                                            Connected
-                                        </span>
+                                        {isSyncConnected ? (
+                                            <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-[11px] font-bold">
+                                                <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div>
+                                                Connected
+                                            </span>
+                                        ) : (
+                                            <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-500/10 text-slate-400 text-[11px] font-bold border border-slate-500/20">
+                                                Disconnected
+                                            </span>
+                                        )}
                                     </div>
-                                    <p className="text-[13px] font-medium text-slate-400 mt-1 mb-1.5">Your vault is encrypted and synced securely.</p>
-                                    <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
-                                        <History className="w-3 h-3" /> Last synced: 2 minutes ago
-                                    </div>
+                                    <p className="text-[13px] font-medium text-slate-400 mt-1 mb-1.5">
+                                        {isSyncConnected ? "Your vault is encrypted and synced securely." : "Connect your Google Drive to enable encrypted backups."}
+                                    </p>
+                                    {isSyncConnected && (
+                                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+                                            <History className="w-3 h-3" /> Last synced: 2 minutes ago
+                                        </div>
+                                    )}
                                 </div>
                             </div>
-                            <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 transition-colors shadow-sm">
-                                <RefreshCw className="w-[18px] h-[18px]" /> Sync Now
+                            <button
+                                onClick={handleConnectClick}
+                                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white shadow-sm transition-colors ${isSyncConnected ? 'bg-[#1e2330] hover:bg-[#2d3748] border border-slate-700' : 'bg-blue-600 hover:bg-blue-500'}`}
+                            >
+                                {isSyncConnected ? (
+                                    <>
+                                        <RefreshCw className="w-[18px] h-[18px]" /> Sync Now
+                                    </>
+                                ) : (
+                                    "Connect Google Drive"
+                                )}
                             </button>
                         </div>
                     </div>

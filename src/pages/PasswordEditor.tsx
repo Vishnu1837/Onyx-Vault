@@ -72,18 +72,39 @@ export function PasswordEditor() {
         setGeneratedPassword(retVal);
     };
 
+    const strengthInfo = (() => {
+        if (!password) return { label: 'None', score: 0, color: 'text-slate-500', bg: 'bg-slate-500/10' };
+        let score = 0;
+
+        if (/[a-z]/.test(password)) score += 1;
+        if (/[A-Z]/.test(password)) score += 1;
+        if (/[0-9]/.test(password)) score += 1;
+        if (/[^A-Za-z0-9]/.test(password)) score += 1;
+
+        switch (score) {
+            case 1: return { label: 'Weak', score: 1, color: 'text-red-500', bg: 'bg-red-500/10' };
+            case 2: return { label: 'Medium', score: 2, color: 'text-orange-500', bg: 'bg-orange-500/10' };
+            case 3: return { label: 'Strong', score: 3, color: 'text-yellow-400', bg: 'bg-yellow-400/10' };
+            case 4: return { label: 'Very Strong', score: 4, color: 'text-emerald-500', bg: 'bg-emerald-500/10' };
+            default: return { label: 'Weak', score: 1, color: 'text-red-500', bg: 'bg-red-500/10' };
+        }
+    })();
+
     const handleSave = () => {
         if (isNew) {
             addItem({
                 title: title || 'New Item',
                 username: username,
+                password: password,
                 iconUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(title || 'New')}&background=random`,
-                strength: 'Strong'
+                strength: (strengthInfo.label === 'None' ? 'Weak' : strengthInfo.label) as any
             });
         } else if (id) {
             updateItem(id, {
                 title: title || 'Unnamed Item',
                 username: username,
+                password: password,
+                strength: (strengthInfo.label === 'None' ? 'Weak' : strengthInfo.label) as any
             });
         }
         navigate('/vault/logins');
@@ -202,7 +223,11 @@ export function PasswordEditor() {
                                 <div>
                                     <div className="flex justify-between items-center mb-2">
                                         <label className="block text-[13px] font-semibold text-slate-400">Password</label>
-                                        <span className="text-[10px] uppercase font-bold text-emerald-500 bg-emerald-500/10 px-2.5 py-0.5 rounded-full tracking-wider">Strong</span>
+                                        {strengthInfo.score > 0 && (
+                                            <span className={`text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-full tracking-wider ${strengthInfo.color} ${strengthInfo.bg}`}>
+                                                {strengthInfo.label}
+                                            </span>
+                                        )}
                                     </div>
                                     <div className="relative">
                                         <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">
@@ -227,10 +252,10 @@ export function PasswordEditor() {
 
                                     {/* Strength Indicator Bar */}
                                     <div className="flex gap-1 mt-2">
-                                        <div className="h-1 flex-1 bg-red-500 rounded-full"></div>
-                                        <div className="h-1 flex-1 bg-orange-500 rounded-full"></div>
-                                        <div className="h-1 flex-1 bg-yellow-400 rounded-full"></div>
-                                        <div className="h-1 flex-1 bg-emerald-500 rounded-full"></div>
+                                        <div className={`h-1 flex-1 rounded-full transition-colors duration-300 ${strengthInfo.score >= 1 ? 'bg-red-500' : 'bg-slate-700'}`}></div>
+                                        <div className={`h-1 flex-1 rounded-full transition-colors duration-300 ${strengthInfo.score >= 2 ? 'bg-orange-500' : 'bg-slate-700'}`}></div>
+                                        <div className={`h-1 flex-1 rounded-full transition-colors duration-300 ${strengthInfo.score >= 3 ? 'bg-yellow-400' : 'bg-slate-700'}`}></div>
+                                        <div className={`h-1 flex-1 rounded-full transition-colors duration-300 ${strengthInfo.score >= 4 ? 'bg-emerald-500' : 'bg-slate-700'}`}></div>
                                     </div>
                                 </div>
                             </div>
